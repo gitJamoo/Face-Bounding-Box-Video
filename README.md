@@ -8,6 +8,10 @@ A simple Python script that tracks faces in real-time using your webcam and disp
 - **Configurable bounding box color** (green, red, blue, yellow, cyan, magenta, white, orange, purple)
 - **Customizable text labels** at the top and bottom of the bounding box
 - **Automatic face tracking** that follows detected faces
+- **Smooth bounding box tracking** with configurable frame averaging to reduce jitter
+- **Video recording** with keyboard control - press 'r' to start/stop recording
+- **Recording indicator** with duration display during recording
+- **Multiple camera support** - easily switch between different webcams
 
 ## Installation
 
@@ -53,6 +57,14 @@ python face_tracker.py --color red --top-text "Hello!" --bottom-text "Smile :)"
 - `--bottom-text`: Text displayed below the bounding box
   - Default: `"Tracking Active"`
 
+- `--smoothing-frames`: Number of frames to average for smoothing
+  - Default: `5` (higher = smoother but more lag, set to `1` to disable)
+  - Recommended range: 3-10 frames
+
+- `--output-dir`: Directory to save recorded videos
+  - Default: `recorded_videos`
+  - Videos are saved with timestamp filenames (e.g., `face_track_20231223_143052.mp4`)
+
 ### Camera Selection
 
 **List available cameras:**
@@ -89,12 +101,53 @@ python face_tracker.py --camera 1 --color blue --top-text "User Identified" --bo
 
 **Yellow bounding box:**
 ```bash
-python face_tracker.py --color yellow --top-text "Attention" --bottom-text "Look at camera"
+ python face_tracker.py --color yellow --top-text "Attention" --bottom-text "Look at camera"
+```
+
+**Disable smoothing for faster response:**
+```bash
+python face_tracker.py --smoothing-frames 1
+```
+
+**High smoothing for very stable box:**
+```bash
+python face_tracker.py --smoothing-frames 10
+```
+
+**Custom output directory for recordings:**
+```bash
+python face_tracker.py --output-dir "my_recordings"
 ```
 
 ## Controls
 
+- Press **'r'** to start/stop recording
 - Press **'q'** to quit the application
+
+## Recording Videos
+
+The script includes built-in video recording functionality:
+
+1. **Start the application** normally
+2. **Press 'r'** to start recording - you'll see a red "REC" indicator with a timer
+3. **Press 'r' again** to stop recording
+4. Videos are automatically saved to the `recorded_videos` folder (or your custom `--output-dir`)
+5. Files are named with timestamps: `face_track_YYYYMMDD_HHMMSS.mp4`
+
+**Recording Features:**
+- Real-time recording indicator (red circle + "REC" text)
+- Duration timer showing recording length (MM:SS)
+- Automatic file saving with timestamps
+- Records everything including bounding boxes and text overlays
+
+## Smoothing
+
+The bounding box smoothing feature reduces jitter by averaging the position and size over multiple frames:
+
+- **Default smoothing**: 5 frames - good balance between stability and responsiveness
+- **More smoothing**: Use `--smoothing-frames 10` for very stable tracking (but slightly more lag)
+- **Less smoothing**: Use `--smoothing-frames 3` for faster response to movement
+- **No smoothing**: Use `--smoothing-frames 1` to disable (instant response, more jitter)
 
 ## How It Works
 

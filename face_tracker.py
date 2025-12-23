@@ -1,6 +1,9 @@
 import cv2
 import argparse
 import sys
+from datetime import datetime
+from collections import deque
+import os
 
 
 def list_available_cameras(max_cameras=10):
@@ -47,6 +50,10 @@ def main():
                         help='Text to display at the top of the bounding box')
     parser.add_argument('--bottom-text', type=str, default='Tracking Active',
                         help='Text to display at the bottom of the bounding box')
+    parser.add_argument('--smoothing-frames', type=int, default=5,
+                        help='Number of frames to average for smoothing (default: 5, set to 1 to disable)')
+    parser.add_argument('--output-dir', type=str, default='recorded_videos',
+                        help='Directory to save recorded videos (default: recorded_videos)')
     
     args = parser.parse_args()
     
@@ -99,12 +106,34 @@ def main():
         sys.exit(1)
     
     print(f"✅ Successfully opened camera {args.camera}")
-    print("\nFace tracking started. Press 'q' to quit.")
+    print("\nFace tracking started.")
     print(f"  Camera Index: {args.camera}")
     print(f"  Box Color: {args.color}")
     print(f"  Top Text: {args.top_text}")
     print(f"  Bottom Text: {args.bottom_text}")
+    print(f"  Smoothing: {args.smoothing_frames} frames")
+    print("\nControls:")
+    print("  Press 'r' to start/stop recording")
+    print("  Press 'q' to quit")
     print()
+    
+    # Recording setup
+    is_recording = False
+    video_writer = None
+    recording_start_time = None
+    
+    # Create output directory if it doesn't exist
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+        print(f"Created output directory: {args.output_dir}")
+    
+    # Get frame dimensions for video writer
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30  # Default to 30 if unable to get FPS
+    
+    # Smoothing setup - store recent bounding boxes
+    bbox_history = deque(maxlen=args.smoothing_frames)
     
     while True:
         # Capture frame-by-frame
@@ -125,8 +154,26 @@ def main():
             minSize=(30, 30)
         )
         
-        # Draw bounding box and text for each detected face
-        for (x, y, w, h) in faces:
+        # Process detected faces with smoothing
+        if len(faces) > 0:
+            # Use the first detected face (you can modify to track multiple faces)
+            x, y, w, h = faces[0]
+            
+            # Add to history for smoothing
+            bbox_history.append((x, y, w, h))
+            
+            # Calculate smoothed bounding box (average of recent detections)
+            if len(bbox_history) > 0:
+                avg_x = int(sum([box[0] for box in bbox_history]) / len(bbox_history))
+                avg_y = int(sum([box[1] for box in bbox_history]) / len(bbox_history))
+                avg_w = int(sum([box[2] for box in bbox_history]) / len(bbox_history))
+                avg_h = int(sum([box[3] for box in bbox_history]) / len(bbox_history))
+                
+                # Use smoothed values
+                x, y, w, h = avg_x, avg_y, avg_w, avg_h
+        
+        # Draw bounding box and text for detected face
+        if len(bbox_history) > 0:
             # Draw rectangle around face
             cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 2)
             
@@ -165,14 +212,65 @@ def main():
             cv2.putText(frame, args.bottom_text, (bottom_text_x, bottom_text_y),
                         font, font_scale, (255, 255, 255), font_thickness)
         
+        # Add recording indicator if recording
+        if is_recording:
+            # Red circle indicator
+            cv2.circle(frame, (30, 30), 15, (0, 0, 255), -1)
+            cv2.circle(frame, (30, 30), 15, (255, 255, 255), 2)
+            
+            # REC text
+            cv2.putText(frame, "REC", (55, 40), cv2.FONT_HERSHEY_SIMPLEX, 
+                       0.7, (0, 0, 255), 2)
+            
+            # Recording duration
+            if recording_start_time:
+                duration = (datetime.now() - recording_start_time).total_seconds()
+                duration_text = f"{int(duration // 60):02d}:{int(duration % 60):02d}"
+                cv2.putText(frame, duration_text, (110, 40), cv2.FONT_HERSHEY_SIMPLEX,
+                           0.6, (255, 255, 255), 2)
+            
+            # Write frame to video file
+            if video_writer is not None:
+                video_writer.write(frame)
+        
         # Display the resulting frame
         cv2.imshow('Face Tracker', frame)
         
+        # Handle keyboard input
+        key = cv2.waitKey(1) & 0xFF
+        
+        # Toggle recording with 'r' key
+        if key == ord('r'):
+            if not is_recording:
+                # Start recording
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = os.path.join(args.output_dir, f"face_track_{timestamp}.mp4")
+                
+                # Initialize video writer
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(output_filename, fourcc, fps, 
+                                               (frame_width, frame_height))
+                
+                is_recording = True
+                recording_start_time = datetime.now()
+                print(f"\n🔴 Recording started: {output_filename}")
+            else:
+                # Stop recording
+                is_recording = False
+                if video_writer is not None:
+                    video_writer.release()
+                    video_writer = None
+                print(f"⏹️  Recording stopped")
+                recording_start_time = None
+        
         # Break loop on 'q' key press
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if key == ord('q'):
             break
     
     # Release resources
+    if video_writer is not None:
+        video_writer.release()
+        print("\n💾 Recording saved")
     cap.release()
     cv2.destroyAllWindows()
 
